@@ -1,0 +1,234 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Renan Almeida Baqui"
+date: "02/11/2021"
+output: html_document
+html_document:
+    df_print: paged
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+**Practical Machine Learning by Johns Hopkins University**
+
+**Course Project**
+
+**Background**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now
+possible to collect a large amount of data about personal activity
+relatively inexpensively. These type of devices are part of the
+quantified self movement -- a group of enthusiasts who take measurements
+about themselves regularly to improve their health, to find patterns in
+their behavior, or because they are tech geeks. One thing that people
+regularly do is quantify how much of a particular activity they do, but
+they rarely quantify how well they do it. In this project, your goal
+will be to use data from accelerometers on the belt, forearm, arm, and
+dumbell of 6 participants. They were asked to perform barbell lifts
+correctly and incorrectly in 5 different ways. More information is
+available from the website here:
+<http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight
+Lifting Exercise Dataset).
+
+**Data**
+
+The training data for this project are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+The data for this project come from this source:
+<http://groupware.les.inf.puc-rio.br/har>. If you use the document you
+create for this class for any purpose please cite them as they have been
+very generous in allowing their data to be used for this kind of
+assignment.
+
+**What you should submit**
+
+The goal of your project is to predict the manner in which they did the
+exercise. This is the "classe" variable in the training set. You may use
+any of the other variables to predict with. You should create a report
+describing how you built your model, how you used cross validation, what
+you think the expected out of sample error is, and why you made the
+choices you did. You will also use your prediction model to predict 20
+different test cases.
+
+**The Project**
+
+**Libraries**
+
+Loading the R packages and libraries
+
+```{r}
+library(caret)
+library(knitr)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+
+set.seed(13343)
+```
+
+**Downloading the Data**
+
+Extracting the two data sets from the provided URLs
+
+```{r}
+trainingData <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',header=T)
+testingData <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv',header=T)
+```
+
+Creating two subsets within the training data set: *train* (75%) and
+*cross validation* (25%)
+
+```{r}
+ 
+inTrain  <- createDataPartition(trainingData$classe, p=0.75, list=FALSE)
+TrainSet <- trainingData[inTrain, ]
+CrossValSet  <- trainingData[-inTrain, ]
+dim(TrainSet)
+dim(CrossValSet)
+```
+
+**Pre-processing**
+
+Verifying and exploring the training data set
+
+When looking at the training data set table we can see that there
+are a lot of NA variables that need pre processing and some variables are only for identification purposes
+
+Removing nearly zero variance (NZV) variables from both sets
+
+```{r}
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+CrossValSet  <- CrossValSet[, -NZV]
+dim(TrainSet)
+dim(CrossValSet)
+```
+
+Removing NA variables (more than 70% of NA in the variable)
+
+```{r}
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.7
+TrainSet <- TrainSet[, AllNA==FALSE]
+CrossValSet  <- CrossValSet[, AllNA==FALSE]
+dim(TrainSet)
+dim(CrossValSet)
+```
+
+Removing unnecessary qualitative variables (columns 1 to 7)
+
+```{r}
+TrainSet <- TrainSet[, -(1:7)]
+CrossValSet  <- CrossValSet[, -(1:7)]
+dim(TrainSet)
+dim(CrossValSet)
+```
+
+**Training the Machine Learning Models**
+
+*Decision Tree Model*
+
+Model fit
+
+```{r}
+set.seed(13343)
+modFitDecTree <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(modFitDecTree)
+```
+
+Prediction and Confusion Matrix on Cross Validation data set
+
+```{r}
+predictDecTree <- predict(modFitDecTree, newdata=CrossValSet, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, as.factor(CrossValSet$classe))
+confMatDecTree
+```
+
+Plot and model accuracy
+
+```{r}
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 3)))
+```
+
+Expected out of sample error for Decision Tree: 1 - 0.695 = 0.305
+
+*Random Forest*
+
+Model fit
+
+```{r}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf",
+                          trControl=controlRF)
+modFitRandForest$finalModel
+```
+
+Prediction and Confusion Matrix on Cross Validation data set
+
+```{r}
+predictRandForest <- predict(modFitRandForest, newdata=CrossValSet)
+confMatRandForest <- confusionMatrix(predictRandForest, as.factor(CrossValSet$classe))
+confMatRandForest
+```
+
+Plot and model accuracy
+
+```{r}
+plot(confMatRandForest$table, col = confMatRandForest$byClass, 
+     main = paste("Random Forest Accuracy =",
+                  round(confMatRandForest$overall['Accuracy'], 3)))
+```
+
+Expected out of sample error for Random Forest: 1 - 0.992 = 0.008
+
+*Generalized Boosted Model (GBM)*
+
+Model fit
+
+```{r}
+set.seed(13343)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=TrainSet, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModel
+```
+
+Prediction and Confusion Matrix on Cross Validation data set
+
+```{r}
+predictGBM <- predict(modFitGBM, newdata=CrossValSet)
+confMatGBM <- confusionMatrix(predictGBM, as.factor(CrossValSet$classe))
+confMatGBM
+```
+
+Plot and model accuracy
+
+```{r}
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM Accuracy =", round(confMatGBM$overall['Accuracy'], 3)))
+```
+
+Expected out of sample error for the Generalized Boosted Model: 1 -
+0.959 = 0.041
+
+**Prediction on Test Cases**
+
+Since the *Random Forest Model* provided the best accuracy (and less
+expected out of sample error) among the three tested models earlier,
+this is the one that is going to be chosen for my final prediction
+
+Final prediction on testing data (Course Project Prediction Quiz)
+
+```{r}
+predictQuiz <- predict(modFitRandForest, newdata=testingData)
+predictQuiz
+```
